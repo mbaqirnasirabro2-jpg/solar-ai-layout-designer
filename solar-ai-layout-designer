@@ -1,0 +1,139 @@
+"""
+===============================================================================
+Title: AI-Assisted Solar PV Layout & System Design Engine
+Author: Muhammad Baqir (GitHub: @mbaqirnasirabro2-jpg)
+Description: Automated engineering algorithm for calculating solar panel layout,
+             tilt angles, pitch/shading distance, and array capacity for a given site.
+===============================================================================
+"""
+
+import numpy as np
+import pandas as pd
+
+
+class SolarLayoutEngine:
+    """Core engineering engine to calculate optimal solar PV layout on roof/ground sites."""
+
+    def __init__(
+        self,
+        site_length_m: float,
+        site_width_m: float,
+        latitude_deg: float,
+        panel_power_w: float = 550.0,
+        panel_length_m: float = 2.278,
+        panel_width_m: float = 1.134,
+        panel_efficiency: float = 0.213,
+    ):
+        # Site parameters
+        self.site_length = site_length_m
+        self.site_width = site_width_m
+        self.latitude = latitude_deg
+        self.site_area = site_length_m * site_width_m
+
+        # Solar Panel Specifications (Default: 550W Monofacial/Bifacial standard module)
+        self.panel_power = panel_power_w
+        self.panel_length = panel_length_m
+        self.panel_width = panel_width_m
+        self.panel_area = panel_length_m * panel_width_m
+        self.panel_efficiency = panel_efficiency
+
+    def calculate_optimal_tilt(self) -> float:
+        """Calculates optimal fixed tilt angle based on latitude."""
+        abs_lat = abs(self.latitude)
+        if abs_lat < 25:
+            optimal_tilt = abs_lat * 0.87
+        elif 25 <= abs_lat <= 50:
+            optimal_tilt = (abs_lat * 0.76) + 3.1
+        else:
+            optimal_tilt = abs_lat * 0.9
+        return round(optimal_tilt, 2)
+
+    def calculate_inter_row_pitch(
+        self, tilt_deg: float, sun_altitude_dec_solstice: float = 23.5
+    ) -> float:
+        """Calculates minimum shading-free inter-row pitch distance (D)
+
+        Formula: Pitch = Panel_Length * [cos(Tilt) + sin(Tilt) / tan(Sun_Elevation)]
+        """
+        tilt_rad = np.radians(tilt_deg)
+        # Solar elevation angle at winter solstice noon
+        solar_elevation = 90 - self.latitude - sun_altitude_dec_solstice
+        solar_elevation_rad = np.radians(solar_elevation)
+
+        # Minimum distance to prevent inter-row shading
+        pitch_distance = self.panel_length * (
+            np.cos(tilt_rad) + (np.sin(tilt_rad) / np.tan(solar_elevation_rad))
+        )
+        return round(pitch_distance, 3)
+
+    def generate_layout_design(
+        self, orientation: str = "portrait", walkway_margin_m: float = 1.0
+    ) -> dict:
+        """Designs the structural layout and placement grid for the site."""
+        usable_length = self.site_length - (2 * walkway_margin_m)
+        usable_width = self.site_width - (2 * walkway_margin_m)
+
+        if usable_length <= 0 or usable_width <= 0:
+            raise ValueError(
+                "Walkway margins exceed total site dimensions!"
+            )
+
+        optimal_tilt = self.calculate_optimal_tilt()
+        pitch = self.calculate_inter_row_pitch(optimal_tilt)
+
+        if orientation.lower() == "portrait":
+            row_footprint = pitch
+            col_footprint = self.panel_width + 0.02  # 20mm module clamp gap
+        else:  # landscape
+            row_footprint = self.panel_width * np.cos(
+                np.radians(optimal_tilt)
+            ) + (pitch - self.panel_length)
+            col_footprint = self.panel_length + 0.02
+
+        # Grid calculation
+        num_rows = int(usable_length // row_footprint)
+        num_cols = int(usable_width // col_footprint)
+        total_panels = num_rows * num_cols
+
+        # System Capacity Calculations
+        system_dc_capacity_kw = (total_panels * self.panel_power) / 1000.0
+        gcr = (total_panels * self.panel_area) / self.site_area  # Ground Coverage Ratio
+
+        return {
+            "site_area_sqm": self.site_area,
+            "usable_area_sqm": usable_length * usable_width,
+            "optimal_tilt_deg": optimal_tilt,
+            "min_inter_row_pitch_m": pitch,
+            "orientation": orientation.capitalized() if hasattr(orientation, 'capitalized') else orientation.capitalize(),
+            "layout_grid": f"{num_rows} Rows x {num_cols} Columns",
+            "total_panels": total_panels,
+            "dc_capacity_kwp": round(system_dc_capacity_kw, 2),
+            "ground_coverage_ratio_gcr": round(gcr * 100, 2),
+        }
+
+
+# --- EXECUTION & DEMO ---
+if __name__ == "__main__":
+    print("==================================================================")
+    print("      AI SOLAR PV SITE LAYOUT DESIGNER & OPTIMIZER ENGINE         ")
+    print("==================================================================\n")
+
+    # Example Site: Industrial Rooftop / Ground Site (50m x 30m in Quetta/Balochistan, Lat: 30.17)
+    site_designer = SolarLayoutEngine(
+        site_length_m=50.0,
+        site_width_m=30.0,
+        latitude_deg=30.17,
+        panel_power_w=580.0,  # 580W N-Type TopCon Panels
+    )
+
+    layout_results = site_designer.generate_layout_design(
+        orientation="portrait", walkway_margin_m=1.2
+    )
+
+    print("[SITE & DESIGN SUMMARY]")
+    for key, value in layout_results.items():
+        print(f"  • {key.replace('_', ' ').upper()}: {value}")
+
+    print("\n==================================================================")
+    print(" [SUCCESS] Layout optimization complete! Ready for CAD export.")
+    print("==================================================================")
